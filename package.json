@@ -1,0 +1,45 @@
+{
+  "name": "crx-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Chrome extension testing — access chrome.storage, Service Workers, declarativeNetRequest and more from AI coding agents",
+  "type": "module",
+  "bin": {
+    "crx-mcp": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "chrome-extension",
+    "testing",
+    "puppeteer",
+    "model-context-protocol",
+    "chrome",
+    "browser-testing",
+    "service-worker",
+    "manifest-v3"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "puppeteer-core": "^24.6.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
