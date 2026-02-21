@@ -1,10 +1,10 @@
 {
   "name": "crx-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Chrome extension testing — access chrome.storage, Service Workers, declarativeNetRequest and more from AI coding agents",
   "type": "module",
   "bin": {
-    "crx-mcp": "./dist/cli.js"
+    "crx-mcp": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

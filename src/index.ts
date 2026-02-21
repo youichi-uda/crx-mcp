@@ -27,7 +27,7 @@ import { reloadExtensionSchema, reloadExtension } from './tools/advanced/reload-
 export function createServer(options: CLIOptions = {}): McpServer {
   const server = new McpServer({
     name: 'crx-mcp',
-    version: '0.1.0',
+    version: '0.1.1',
   });
 
   const manager = new BrowserManager(options);

@@ -108,6 +108,9 @@ export class BrowserManager {
       args,
       userDataDir,
       defaultViewport: null,
+      // CRITICAL: Puppeteer adds --disable-extensions by default, which prevents
+      // any extension from loading. We must exclude it.
+      ignoreDefaultArgs: ['--disable-extensions'],
     });
 
     // Detect extension ID from service worker target
@@ -157,8 +160,9 @@ export class BrowserManager {
 
   private async detectExtensionId(extensionPath: string): Promise<string> {
     const browser = this.getBrowser();
+    const extRegex = /chrome-extension:\/\/([a-z]{32})\//;
 
-    // Wait for the extension's service worker or page to appear
+    // Method 1: waitForTarget for service worker or extension page
     const target = await browser
       .waitForTarget(
         (t) => {
@@ -168,29 +172,61 @@ export class BrowserManager {
             (t.type() === 'service_worker' || t.type() === 'page')
           );
         },
-        { timeout: 15000 },
+        { timeout: 10000 },
       )
       .catch(() => null);
 
     if (target) {
-      const url = target.url();
-      const match = url.match(/chrome-extension:\/\/([a-z]+)\//);
+      const match = target.url().match(extRegex);
       if (match) return match[1];
     }
 
-    // Fallback: query chrome://extensions via CDP
+    // Method 2: scan all existing targets via Puppeteer
+    const allTargets = browser.targets();
+    for (const t of allTargets) {
+      const match = t.url().match(extRegex);
+      if (match) return match[1];
+    }
+
+    // Method 3: use CDP Target.getTargets for comprehensive list
     const page = (await browser.pages())[0];
     if (page) {
-      await page.goto('chrome://extensions', { waitUntil: 'domcontentloaded' });
-      // Try to extract extension ID from the page
-      const extId = await page.evaluate(() => {
-        const mgr = (document.querySelector('extensions-manager') as any);
-        if (mgr?.shadowRoot) {
-          const items = mgr.shadowRoot.querySelectorAll('extensions-item-list');
-          // This is complex due to shadow DOM, use simpler approach
+      try {
+        const cdp = await page.createCDPSession();
+        const { targetInfos } = await cdp.send('Target.getTargets') as { targetInfos: Array<{ url: string; type: string }> };
+        for (const info of targetInfos) {
+          const match = info.url.match(extRegex);
+          if (match) return match[1];
         }
-        return null;
-      }).catch(() => null);
+        await cdp.detach();
+      } catch {
+        // CDP may fail
+      }
+    }
+
+    // Method 4: navigate to chrome://extensions and extract ID from page content
+    if (page) {
+      try {
+        await page.goto('chrome://extensions', { waitUntil: 'load', timeout: 10000 });
+        // Wait a moment for extensions manager to render
+        await new Promise((r) => setTimeout(r, 1000));
+        const extId = await page.evaluate(() => {
+          // The extensions page uses shadow DOM, traverse it
+          const mgr = document.querySelector('extensions-manager');
+          if (!mgr?.shadowRoot) return null;
+          const itemList = mgr.shadowRoot.querySelector('extensions-item-list');
+          if (!itemList?.shadowRoot) return null;
+          const items = itemList.shadowRoot.querySelectorAll('extensions-item');
+          for (const item of items) {
+            const id = item.id;
+            if (id && /^[a-z]{32}$/.test(id)) return id;
+          }
+          return null;
+        }).catch(() => null);
+        if (extId) return extId;
+      } catch {
+        // Navigation may fail
+      }
     }
 
     throw new Error('Could not detect extension ID. Make sure the extension loads correctly.');
@@ -242,7 +278,12 @@ export class BrowserManager {
 }
 
 function findChrome(): string {
-  const candidates =
+  // Prefer Chrome for Testing / Chromium (supports --load-extension and
+  // --disable-extensions-except flags needed for extension development).
+  // Google Chrome stable does NOT support these flags.
+  const cfTCandidates = findChromeForTesting();
+
+  const stableCandidates =
     process.platform === 'win32'
       ? [
           process.env['PROGRAMFILES'] + '\\Google\\Chrome\\Application\\chrome.exe',
@@ -258,11 +299,48 @@ function findChrome(): string {
             '/usr/bin/chromium',
           ];
 
+  // Chrome for Testing first, then stable Chrome as fallback
+  const candidates = [...cfTCandidates, ...stableCandidates];
+
   for (const c of candidates) {
     if (c && fs.existsSync(c)) return c;
   }
 
   throw new Error(
-    'Chrome not found. Specify --chrome-path or set CHROME_PATH environment variable.',
+    'Chrome not found. Install Chrome for Testing (npx playwright install chromium), ' +
+      'specify --chrome-path, or set CHROME_PATH environment variable.',
   );
+}
+
+function findChromeForTesting(): string[] {
+  const results: string[] = [];
+  // Playwright installs Chrome for Testing in ms-playwright directory
+  const playwrightDir =
+    process.platform === 'win32'
+      ? path.join(process.env['LOCALAPPDATA'] || '', 'ms-playwright')
+      : process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
+        : path.join(os.homedir(), '.cache', 'ms-playwright');
+
+  if (fs.existsSync(playwrightDir)) {
+    try {
+      const dirs = fs.readdirSync(playwrightDir)
+        .filter((d) => d.startsWith('chromium-'))
+        .sort()
+        .reverse(); // newest first
+
+      for (const dir of dirs) {
+        const exe =
+          process.platform === 'win32'
+            ? path.join(playwrightDir, dir, 'chrome-win64', 'chrome.exe')
+            : process.platform === 'darwin'
+              ? path.join(playwrightDir, dir, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium')
+              : path.join(playwrightDir, dir, 'chrome-linux', 'chrome');
+        results.push(exe);
+      }
+    } catch {
+      // Directory listing may fail
+    }
+  }
+  return results;
 }
