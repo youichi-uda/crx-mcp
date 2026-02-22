@@ -13,6 +13,7 @@ export const consoleLogsSchema = z.object({
     .describe('Minimum log level'),
   limit: z.number().optional().default(50).describe('Max entries to return'),
   clear: z.boolean().optional().default(false).describe('Clear logs after reading'),
+  since: z.number().optional().describe('Only return entries after this timestamp (ms epoch)'),
 });
 
 export type ConsoleLogsInput = z.infer<typeof consoleLogsSchema>;
@@ -27,6 +28,7 @@ export async function consoleLogs(
     level: input.level as ConsoleLevel | undefined,
     limit: input.limit,
     clear: input.clear,
+    since: input.since,
   });
 
   if (entries.length === 0) {
@@ -35,7 +37,8 @@ export async function consoleLogs(
 
   const lines = entries.map((e) => {
     const ts = new Date(e.timestamp).toISOString().slice(11, 23);
-    return `[${ts}] [${e.source}] ${e.level.toUpperCase()}: ${e.text}`;
+    const urlPart = e.url ? ` (${e.url})` : '';
+    return `[${ts}] [${e.source}] ${e.level.toUpperCase()}: ${e.text}${urlPart}`;
   });
 
   return lines.join('\n');

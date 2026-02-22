@@ -8,7 +8,7 @@ export async function openPopup(manager: BrowserManager): Promise<string> {
   const browser = manager.getBrowser();
 
   // Get popup path from manifest
-  const popupPath = await ext.evalInServiceWorker(`
+  const popupPath = await ext.evalInServiceWorkerRaw(`
     (async () => {
       const manifest = chrome.runtime.getManifest();
       return manifest.action?.default_popup || manifest.action?.popup || null;

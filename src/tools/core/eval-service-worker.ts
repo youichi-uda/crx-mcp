@@ -13,5 +13,6 @@ export async function evalServiceWorker(
 ): Promise<string> {
   const ext = manager.getExtension();
   const result = await ext.evalInServiceWorker(input.expression);
+  if (result === undefined) return '(undefined)';
   return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
 }

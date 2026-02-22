@@ -17,7 +17,7 @@ export async function dnrRules(
 ): Promise<string> {
   const ext = manager.getExtension();
 
-  const result = await ext.evalInServiceWorker(`
+  const result = await ext.evalInServiceWorkerRaw(`
     (async () => {
       const ruleType = "${input.ruleType}";
       const result = {};

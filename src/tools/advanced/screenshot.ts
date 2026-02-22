@@ -16,21 +16,7 @@ export async function screenshot(
   manager: BrowserManager,
   input: ScreenshotInput,
 ): Promise<{ base64: string; mimeType: string }> {
-  const browser = manager.getBrowser();
-  let page;
-
-  if (input.target === 'page') {
-    page = await manager.getActivePage();
-  } else {
-    const ext = manager.getExtension();
-    const pages = await browser.pages();
-    if (input.target === 'popup') {
-      page = pages.find((p) => p.url().includes('popup'));
-    } else {
-      page = pages.find((p) => p.url().includes('sidepanel') || p.url().includes('side_panel'));
-    }
-    if (!page) page = await manager.getActivePage();
-  }
+  const page = await manager.getTargetPage(input.target);
 
   const buffer = await page.screenshot({
     fullPage: input.fullPage,

@@ -61,6 +61,36 @@ export class BrowserManager {
     return pages[pages.length - 1] || pages[0];
   }
 
+  async getTargetPage(target?: 'page' | 'popup' | 'sidepanel'): Promise<Page> {
+    if (!target || target === 'page') {
+      return this.getActivePage();
+    }
+
+    const ext = this.getExtension();
+    const prefix = `chrome-extension://${ext.id}/`;
+    const browser = this.getBrowser();
+    const pages = await browser.pages();
+
+    let page: Page | undefined;
+    if (target === 'popup') {
+      page = pages.find((p) => {
+        const url = p.url();
+        return url.startsWith(prefix) && url.includes('popup');
+      });
+    } else {
+      // sidepanel
+      page = pages.find((p) => {
+        const url = p.url();
+        return url.startsWith(prefix) && (url.includes('sidepanel') || url.includes('side_panel'));
+      });
+    }
+
+    if (!page) {
+      throw new Error(`No ${target} page found. Use open_popup or open_sidepanel first.`);
+    }
+    return page;
+  }
+
   async launch(extensionPath: string, extraFlags?: string[], initialUrl?: string): Promise<ExtensionInfo> {
     // Resolve absolute path
     const absPath = path.resolve(extensionPath);

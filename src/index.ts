@@ -10,6 +10,9 @@ import { snapshotSchema, snapshot } from './tools/core/snapshot.js';
 import { storageGetSchema, storageGet, storageSetSchema, storageSet } from './tools/core/storage.js';
 import { evalServiceWorkerSchema, evalServiceWorker } from './tools/core/eval-service-worker.js';
 import { consoleLogsSchema, consoleLogs } from './tools/core/console-logs.js';
+import { clickSchema, click } from './tools/core/click.js';
+import { typeSchema, type as typeAction } from './tools/core/type.js';
+import { waitForSchema, waitFor } from './tools/core/wait-for.js';
 
 // Extension-specific tools
 import { manifestValidateSchema, manifestValidate } from './tools/extension/manifest-validate.js';
@@ -17,6 +20,10 @@ import { openPopupSchema, openPopup } from './tools/extension/open-popup.js';
 import { openSidepanelSchema, openSidepanel } from './tools/extension/open-sidepanel.js';
 import { dnrRulesSchema, dnrRules } from './tools/extension/dnr-rules.js';
 import { permissionsCheckSchema, permissionsCheck } from './tools/extension/permissions-check.js';
+import { dnrMatchedRulesSchema, dnrMatchedRules } from './tools/extension/dnr-matched-rules.js';
+import { extensionErrorsSchema, extensionErrors } from './tools/extension/extension-errors.js';
+import { sendMessageSchema, sendMessage } from './tools/extension/send-message.js';
+import { evalExtensionPageSchema, evalExtensionPage } from './tools/extension/eval-extension-page.js';
 
 // Advanced tools
 import { screenshotSchema, screenshot } from './tools/advanced/screenshot.js';
@@ -27,7 +34,7 @@ import { reloadExtensionSchema, reloadExtension } from './tools/advanced/reload-
 export function createServer(options: CLIOptions = {}): McpServer {
   const server = new McpServer({
     name: 'crx-mcp',
-    version: '0.1.1',
+    version: '0.3.0',
   });
 
   const manager = new BrowserManager(options);
@@ -140,6 +147,48 @@ export function createServer(options: CLIOptions = {}): McpServer {
     },
   );
 
+  server.tool(
+    'click',
+    'Click an element by CSS selector.',
+    clickSchema.shape,
+    async (input) => {
+      try {
+        const result = await click(manager, input);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
+  server.tool(
+    'type',
+    'Type text into an input element by CSS selector.',
+    typeSchema.shape,
+    async (input) => {
+      try {
+        const result = await typeAction(manager, input);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
+  server.tool(
+    'wait_for',
+    'Wait for an element to appear, disappear, or change visibility.',
+    waitForSchema.shape,
+    async (input) => {
+      try {
+        const result = await waitFor(manager, input);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
   // === Extension-Specific Tools ===
 
   server.tool(
@@ -208,6 +257,62 @@ export function createServer(options: CLIOptions = {}): McpServer {
     async (input) => {
       try {
         const result = await permissionsCheck(manager, input);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
+  server.tool(
+    'dnr_matched_rules',
+    'Get declarativeNetRequest matched rules (which rules fired). Requires declarativeNetRequestFeedback permission.',
+    dnrMatchedRulesSchema.shape,
+    async (input) => {
+      try {
+        const result = await dnrMatchedRules(manager, input);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
+  server.tool(
+    'extension_errors',
+    'Get extension errors from chrome://extensions and recent SW crash logs.',
+    extensionErrorsSchema.shape,
+    async () => {
+      try {
+        const result = await extensionErrors(manager);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
+  server.tool(
+    'send_message',
+    'Send a message via chrome.runtime.sendMessage() and capture the response.',
+    sendMessageSchema.shape,
+    async (input) => {
+      try {
+        const result = await sendMessage(manager, input);
+        return { content: [{ type: 'text', text: result }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: formatError(e) }], isError: true };
+      }
+    },
+  );
+
+  server.tool(
+    'eval_extension_page',
+    'Execute JavaScript in an extension popup or side panel page context (has access to chrome.* APIs).',
+    evalExtensionPageSchema.shape,
+    async (input) => {
+      try {
+        const result = await evalExtensionPage(manager, input);
         return { content: [{ type: 'text', text: result }] };
       } catch (e) {
         return { content: [{ type: 'text', text: formatError(e) }], isError: true };

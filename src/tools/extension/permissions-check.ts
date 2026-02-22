@@ -16,7 +16,7 @@ export async function permissionsCheck(
 ): Promise<string> {
   const ext = manager.getExtension();
 
-  const result = await ext.evalInServiceWorker(`
+  const result = await ext.evalInServiceWorkerRaw(`
     (async () => {
       const manifest = chrome.runtime.getManifest();
       const declared = {

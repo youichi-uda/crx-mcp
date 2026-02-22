@@ -15,27 +15,7 @@ export async function snapshot(
   manager: BrowserManager,
   input: SnapshotInput,
 ): Promise<string> {
-  const browser = manager.getBrowser();
-  let page;
-
-  if (input.target === 'page') {
-    page = await manager.getActivePage();
-  } else {
-    // For popup/sidepanel, find the matching page by URL pattern
-    const ext = manager.getExtension();
-    const prefix = `chrome-extension://${ext.id}/`;
-    const pages = await browser.pages();
-
-    if (input.target === 'popup') {
-      page = pages.find((p) => p.url().includes('popup'));
-    } else {
-      page = pages.find((p) => p.url().includes('sidepanel') || p.url().includes('side_panel'));
-    }
-
-    if (!page) {
-      page = await manager.getActivePage();
-    }
-  }
+  const page = await manager.getTargetPage(input.target);
 
   const snapshot = await page.accessibility.snapshot();
   const title = await page.title();

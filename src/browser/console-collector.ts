@@ -24,8 +24,8 @@ function toLevel(raw: string): ConsoleLevel {
 export class ConsoleCollector {
   private entries: ConsoleEntry[] = [];
 
-  add(source: ConsoleSource, level: ConsoleLevel, text: string): void {
-    this.entries.push({ timestamp: Date.now(), source, level, text });
+  add(source: ConsoleSource, level: ConsoleLevel, text: string, url?: string): void {
+    this.entries.push({ timestamp: Date.now(), source, level, text, url });
     if (this.entries.length > MAX_ENTRIES) {
       this.entries = this.entries.slice(-MAX_ENTRIES);
     }
@@ -33,28 +33,28 @@ export class ConsoleCollector {
 
   attachToPage(page: Page, source: ConsoleSource): void {
     page.on('console', (msg) => {
-      this.add(source, toLevel(msg.type()), msg.text());
+      this.add(source, toLevel(msg.type()), msg.text(), page.url());
     });
     page.on('pageerror', ((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      this.add(source, 'error', message);
+      this.add(source, 'error', message, page.url());
     }) as any);
   }
 
-  attachToWorker(cdp: CDPSession, source: ConsoleSource): void {
+  attachToWorker(cdp: CDPSession, source: ConsoleSource, url?: string): void {
     cdp.on('Runtime.consoleAPICalled', (event: any) => {
       const level = toLevel(event.type as string);
       const text = event.args
         .map((arg: any) => arg.value ?? arg.description ?? '')
         .join(' ');
-      this.add(source, level, text);
+      this.add(source, level, text, url);
     });
     cdp.on('Runtime.exceptionThrown', (event: any) => {
       const desc =
         event.exceptionDetails?.exception?.description ??
         event.exceptionDetails?.text ??
         'Unknown error';
-      this.add(source, 'error', desc);
+      this.add(source, 'error', desc, url);
     });
     cdp.send('Runtime.enable').catch(() => {});
   }
@@ -64,8 +64,12 @@ export class ConsoleCollector {
     level?: ConsoleLevel;
     limit?: number;
     clear?: boolean;
+    since?: number;
   }): ConsoleEntry[] {
     let result = this.entries;
+    if (opts?.since) {
+      result = result.filter((e) => e.timestamp >= opts.since!);
+    }
     if (opts?.source) {
       result = result.filter((e) => e.source === opts.source);
     }

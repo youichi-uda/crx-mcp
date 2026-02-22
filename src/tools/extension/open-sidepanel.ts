@@ -8,7 +8,7 @@ export async function openSidepanel(manager: BrowserManager): Promise<string> {
   const browser = manager.getBrowser();
 
   // Try to determine sidepanel path from manifest
-  const sidepanelPath = await ext.evalInServiceWorker(`
+  const sidepanelPath = await ext.evalInServiceWorkerRaw(`
     (async () => {
       const manifest = chrome.runtime.getManifest();
       return manifest.side_panel?.default_path || null;

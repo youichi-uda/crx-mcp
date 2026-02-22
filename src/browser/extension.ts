@@ -19,9 +19,6 @@ export class ExtensionContext {
     this.console = console;
   }
 
-  /**
-   * Discover and attach to the Service Worker target.
-   */
   async attachServiceWorker(): Promise<void> {
     const target = await this.browser
       .waitForTarget(
@@ -37,16 +34,12 @@ export class ExtensionContext {
       const worker = await target.worker();
       if (worker) {
         this.swCdp = await target.createCDPSession();
-        this.console.attachToWorker(this.swCdp, 'service-worker');
+        this.console.attachToWorker(this.swCdp, 'service-worker', target.url());
       }
     }
   }
 
-  /**
-   * Get an active SW CDPSession, reviving if needed.
-   */
   async getWorkerCDP(): Promise<CDPSession | null> {
-    // Check if existing session is still valid
     if (this.swCdp) {
       try {
         await this.swCdp.send('Runtime.evaluate', {
@@ -55,13 +48,11 @@ export class ExtensionContext {
         });
         return this.swCdp;
       } catch {
-        // SW went to sleep, try to revive
         this.swCdp = null;
         this.swTarget = null;
       }
     }
 
-    // Wake up SW by navigating to the extension page
     const page = (await this.browser.pages())[0];
     if (page) {
       await page
@@ -71,15 +62,47 @@ export class ExtensionContext {
         .catch(() => {});
     }
 
-    // Re-attach
     await this.attachServiceWorker();
     return this.swCdp;
   }
 
   /**
    * Execute JS in the Service Worker context.
+   * Auto-wraps in async IIFE to prevent scope pollution and support await.
    */
   async evalInServiceWorker(expression: string): Promise<any> {
+    const cdp = await this.getWorkerCDP();
+    if (!cdp) {
+      throw new Error('Service Worker not available');
+    }
+
+    // Auto-wrap in async IIFE unless already wrapped
+    const wrapped = wrapExpression(expression);
+
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: wrapped,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (result.exceptionDetails) {
+      throw new Error(
+        result.exceptionDetails.exception?.description ??
+          result.exceptionDetails.text ??
+          'SW evaluation error',
+      );
+    }
+    // Handle undefined/void results
+    if (result.result.type === 'undefined') {
+      return undefined;
+    }
+    return result.result.value;
+  }
+
+  /**
+   * Execute JS in the Service Worker WITHOUT auto-IIFE (raw mode).
+   * Used internally by tools that already wrap their own IIFE.
+   */
+  async evalInServiceWorkerRaw(expression: string): Promise<any> {
     const cdp = await this.getWorkerCDP();
     if (!cdp) {
       throw new Error('Service Worker not available');
@@ -96,15 +119,70 @@ export class ExtensionContext {
           'SW evaluation error',
       );
     }
+    if (result.result.type === 'undefined') {
+      return undefined;
+    }
     return result.result.value;
   }
 
+  /**
+   * Find an open extension page by URL pattern.
+   */
+  async findExtensionPage(urlPattern: string): Promise<Page | null> {
+    const pages = await this.browser.pages();
+    const prefix = `chrome-extension://${this.id}/`;
+    return pages.find((p) => {
+      const url = p.url();
+      return url.startsWith(prefix) && url.includes(urlPattern);
+    }) ?? null;
+  }
+
+  /**
+   * Open an extension page in a new tab and return the Page.
+   */
+  async openExtensionPage(path: string): Promise<Page> {
+    const url = `chrome-extension://${this.id}/${path}`;
+    const page = await this.browser.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    return page;
+  }
+
   getPopupUrl(): string | null {
-    // Read from info — caller should parse manifest
     return `chrome-extension://${this.id}/popup.html`;
   }
 
   getSidePanelUrl(): string | null {
     return `chrome-extension://${this.id}/sidepanel.html`;
   }
+}
+
+/**
+ * Wrap expression in async IIFE with smart return detection.
+ * - Already an IIFE → pass through
+ * - Has declarations (let/const/var) → wrap with last expression as return
+ * - Single expression → wrap with return
+ * - Has await → wrap in async IIFE
+ */
+function wrapExpression(expr: string): string {
+  const trimmed = expr.trim();
+
+  // Already an IIFE — pass through
+  if (/^\(async\s/.test(trimmed) && trimmed.endsWith(')')) return trimmed;
+  if (/^\(function/.test(trimmed) && trimmed.endsWith(')')) return trimmed;
+
+  // Already has explicit return → just wrap in async IIFE
+  if (/\breturn\b/.test(trimmed)) {
+    return `(async () => { ${trimmed} })()`;
+  }
+
+  // Multiple statements: wrap all, add return to the last expression
+  const statements = trimmed.replace(/;+$/, '').split(';').map((s) => s.trim()).filter(Boolean);
+  if (statements.length > 1) {
+    const last = statements.pop()!;
+    const init = statements.join(';\n');
+    return `(async () => { ${init};\nreturn ${last}; })()`;
+  }
+
+  // Single expression: wrap with return
+  return `(async () => { return ${trimmed.replace(/;$/, '')}; })()`;
 }

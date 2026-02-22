@@ -13,6 +13,7 @@ export interface ConsoleEntry {
   source: ConsoleSource;
   level: ConsoleLevel;
   text: string;
+  url?: string;
 }
 
 export type ConsoleSource = 'page' | 'service-worker' | 'popup' | 'sidepanel' | 'content-script';
