@@ -34,7 +34,6 @@ export async function dnrRules(
           result.session = await chrome.declarativeNetRequest.getSessionRules();
         }
         if (ruleType === 'static' || ruleType === 'all') {
-          // getEnabledRulesets returns enabled static ruleset IDs
           try {
             result.enabledRulesets = await chrome.declarativeNetRequest.getEnabledRulesets();
           } catch (e) {
@@ -43,6 +42,34 @@ export async function dnrRules(
         }
       } catch (e) {
         return JSON.stringify({ error: e.message });
+      }
+
+      // Validate rules against manifest permissions
+      const warnings = [];
+      const manifest = chrome.runtime.getManifest();
+      const perms = new Set(manifest.permissions || []);
+      const hostPerms = manifest.host_permissions || [];
+      const hasHostAccess = perms.has('declarativeNetRequestWithHostAccess') || hostPerms.length > 0;
+
+      const actionsNeedingHost = new Set(['redirect', 'modifyHeaders']);
+      const allRules = [
+        ...(result.dynamic || []).map(r => ({ ...r, source: 'dynamic' })),
+        ...(result.session || []).map(r => ({ ...r, source: 'session' })),
+      ];
+
+      for (const rule of allRules) {
+        const action = rule.action?.type;
+        if (actionsNeedingHost.has(action) && !hasHostAccess) {
+          warnings.push(
+            'Rule ' + rule.id + ' (' + rule.source + '): "' + action + '" action requires ' +
+            'declarativeNetRequestWithHostAccess permission or host_permissions. ' +
+            'Without it, this rule will be silently ignored.'
+          );
+        }
+      }
+
+      if (warnings.length > 0) {
+        result.warnings = warnings;
       }
 
       return JSON.stringify(result);

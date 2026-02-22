@@ -27,7 +27,7 @@ export async function dnrMatchedRules(
         if (tabId !== undefined) filter.tabId = tabId;
 
         const { rulesMatchedInfo } = await chrome.declarativeNetRequest.getMatchedRules(filter);
-        return JSON.stringify({
+        const result = {
           count: rulesMatchedInfo.length,
           rules: rulesMatchedInfo.map(r => ({
             ruleId: r.rule.ruleId,
@@ -35,7 +35,18 @@ export async function dnrMatchedRules(
             tabId: r.tabId,
             timeStamp: r.timeStamp,
           })),
-        });
+        };
+
+        // Warn if permission is missing (API exists but results may be incomplete)
+        const manifest = chrome.runtime.getManifest();
+        const perms = new Set(manifest.permissions || []);
+        if (!perms.has('declarativeNetRequestFeedback')) {
+          result.warning =
+            'declarativeNetRequestFeedback permission not declared in manifest. ' +
+            'Results may be empty even if rules are matching. Add this permission for accurate results.';
+        }
+
+        return JSON.stringify(result);
       } catch (e) {
         return JSON.stringify({ error: e.message });
       }
